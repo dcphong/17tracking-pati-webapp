@@ -43,3 +43,7 @@ next-env.d.ts
 # Node Package Lock
 package-lock.json
 bun.lock
+
+# temp folders
+need_to_cloned
+.gitnexus

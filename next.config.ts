@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    remotePatterns: [
+      { hostname: "cdn.shopify.com" },
+      { hostname: "s.trackingmore.com" },
+      { hostname: "tms.trackingmore.net" },
+    ],
+  },
 };
 
 export default nextConfig;

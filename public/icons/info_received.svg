@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-app-env="production">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TrackingMore - Order Tracking</title>
+        <link rel="preload" as="style" href="https://tms.trackingmore.net/build/assets/main-DJ9nl_xx.css" /><link rel="modulepreload" href="https://tms.trackingmore.net/build/assets/main-DApP4VjS.js" /><link rel="stylesheet" href="https://tms.trackingmore.net/build/assets/main-DJ9nl_xx.css" /><script type="module" src="https://tms.trackingmore.net/build/assets/main-DApP4VjS.js"></script>    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+<div id="root"></div>
+</body>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-6E2BHEJG2W"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-6E2BHEJG2W');
+</script>
+<script type="text/javascript"> (function(){var w=window;var ic=w.Intercom;if(typeof ic==="function"){ic('reattach_activator');ic('update',w.intercomSettings);}else{var d=document;var i=function(){i.c(arguments);};i.q=[];i.c=function(args){i.q.push(args);};w.Intercom=i;var l=function(){var s=d.createElement('script');s.type='text/javascript';s.async=true;s.src='https://widget.intercom.io/widget/t6tndyrj';var x=d.getElementsByTagName('script')[0];x.parentNode.insertBefore(s,x);};if(w.attachEvent){w.attachEvent('onload',l);}else{w.addEventListener('load',l,false);}}})();</script>
+<script type="text/javascript">
+    window.Intercom('boot', {
+        app_id: "t6tndyrj",
+        from_app: 'TMS',
+        shopify_store_version: '',
+        review: 'no review',
+        review_name: 'no review name',
+        '30-day_orders': null,
+        'cross-sell_target_customer': null,
+        protection: null,
+        quota_remaining: 0,
+        quote_exceeding: 0,
+        additional_quota_total: 0,
+        additional_quota_remaining: 0,
+        next_billing_date: '',
+        country:'',
+        account_manager: '',
+        user_type: '',
+        registration_time: '',
+        company_name:'',
+        admin_url: ``,
+        company_url: ''
+    });
+</script>
+</html>
