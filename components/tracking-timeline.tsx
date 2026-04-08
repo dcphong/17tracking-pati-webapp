@@ -23,7 +23,7 @@ function formatDate(iso: string): string {
 
 export function TrackingTimeline({ events, statusLabel }: { events: TrackingEvent[]; statusLabel: string }) {
   return (
-    <div className="tracking-timeline" style={{ float: "left", width: "68%", boxSizing: "border-box", padding: "0 16px 16px", borderRadius: 8, border: "1px solid #d9d9d9" }}>
+    <div className="tracking-timeline" style={{ float: "left", width: "68%", boxSizing: "border-box", padding: "0 16px 16px" }}>
       <h2 style={{ fontSize: 25, marginBlockStart: 16, fontWeight: 550, marginBottom: 30 }}>
         {STATUS_MAP[statusLabel] || statusLabel}
       </h2>
