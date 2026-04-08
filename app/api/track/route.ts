@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const API_URL = process.env['17TRACK_API_URL'] || 'https://api.17track.net/track/v2.2'
-const API_KEY = process.env['17TRACK_SECURITY_KEY'] || ''
+const API_URL = process.env['TRACK_API_URL'] || 'https://api.17track.net/track/v2.2'
+const API_KEY = process.env['TRACK_SECURITY_KEY'] || ''
 const SUPABASE_URL = process.env['SUPABASE_URL'] || ''
 const SUPABASE_KEY = process.env['SUPABASE_SERVICE_KEY'] || ''
 const SHOPIFY_DOMAIN = process.env['SHOPIFY_DOMAIN'] || ''
