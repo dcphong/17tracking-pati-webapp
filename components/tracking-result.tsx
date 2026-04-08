@@ -6,32 +6,22 @@ import { TrackingTimeline } from "./tracking-timeline";
 import { TrackingSidebar } from "./tracking-sidebar";
 
 export function TrackingResult({ data }: { data: TrackingData }) {
+  const info = data.track_info;
+  const status = info.latest_status.status;
+  const events = info.tracking.providers?.[0]?.events || [];
+  const carrier = info.tracking.providers?.[0]?.provider;
+
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-      {/* Order title - matches .tm_tracking_result_title */}
-      <div style={{ textAlign: "center", marginTop: 60 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 400, lineHeight: "32px" }}>
-          Order {data.order_number}
-        </h1>
-      </div>
+      <TrackingProgress milestones={info.milestone} currentStatus={status} />
 
-      {/* Progress bar */}
-      <TrackingProgress
-        statusNode={data.status_node}
-        currentStatus={data.status}
-      />
-
-      {/* Result area - float layout matching original */}
       <div style={{ minHeight: 100, display: "flex", flexDirection: "column" }}>
         <div style={{ marginBottom: 20, width: "100%", overflow: "hidden" }}>
-          {/* Left: Timeline (68%) */}
-          <div>
-            <TrackingTimeline events={data.trackinfo} statusLabel={data.status} />
-          </div>
-          {/* Right: Sidebar (30%) */}
+          <TrackingTimeline events={events} statusLabel={status} />
           <TrackingSidebar
-            trackingNumber={data.track_number}
-            products={data.title}
+            trackingNumber={data.number}
+            carrierName={carrier?.name || ""}
+            carrierHomepage={carrier?.homepage || ""}
           />
         </div>
       </div>
