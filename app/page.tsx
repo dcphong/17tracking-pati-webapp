@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Ticker } from "@/components/ticker";
 import { Header } from "@/components/header";
@@ -9,6 +9,14 @@ import { TrackingResult } from "@/components/tracking-result";
 import type { TrackingData, ProductInfo } from "@/lib/types";
 
 export default function Home() {
+  return (
+    <Suspense>
+      <HomeContent />
+    </Suspense>
+  );
+}
+
+function HomeContent() {
   const searchParams = useSearchParams();
   const [trackingData, setTrackingData] = useState<TrackingData | null>(null);
   const [products, setProducts] = useState<ProductInfo[]>([]);
