@@ -47,7 +47,6 @@ bun.lock
 # temp folders
 need_to_cloned
 .gitnexus
-slides_show
 
 # CLAUDE
 .playwright-mcp
