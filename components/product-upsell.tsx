@@ -6,9 +6,11 @@ import type { ProductInfo } from "@/lib/types";
 /* eslint-disable @next/next/no-img-element */
 
 function formatPrice(price: string): string {
+  if (!price) return '0.00';
   const num = parseFloat(price);
   if (isNaN(num)) return price;
-  if (num > 1000 && !price.includes('.')) return (num / 100).toFixed(2);
+  // Shopify Storefront API returns cents (no decimal) — convert to dollars
+  if (!price.includes('.') && num > 100) return (num / 100).toFixed(2);
   return num.toFixed(2);
 }
 
