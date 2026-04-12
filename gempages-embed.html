@@ -1,0 +1,579 @@
+<!--
+  WellnessNest Tracking Widget — GemPages Custom HTML Embed
+
+  SETUP:
+  1. Deploy the Next.js app to Vercel first (need /api/track endpoint)
+  2. Replace API_BASE below with your Vercel deployment URL
+  3. In GemPages: Add "Custom HTML" element → paste this entire file
+  4. The page URL should support ?tracking_number=XXX query param
+-->
+
+<div id="wn-tracking-root">
+  <!-- Form -->
+  <div id="wn-form-section" style="max-width:500px;width:100%;margin:0 auto;padding:0 20px;box-sizing:border-box;">
+    <h1 style="font-size:26px;font-weight:400;line-height:32px;text-align:center;margin-bottom:24px;color:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">Track Your Order</h1>
+    <label style="display:block;font-size:14px;font-weight:600;margin-bottom:8px;color:#000;">Tracking Number</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input id="wn-input" placeholder="Enter your tracking number" style="flex:1;padding:10px 14px;border-radius:4px;border:1px solid #ccc;font-size:14px;line-height:20px;outline:none;box-sizing:border-box;min-width:200px;" />
+      <button id="wn-track-btn" onclick="wnTrack()" style="background:#007a5c;color:#fff;border:none;border-radius:4px;padding:10px 28px;font-size:14px;font-weight:600;cursor:pointer;line-height:20px;white-space:nowrap;width:auto;">Track</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="wn-loading" style="display:none;margin-top:40px;color:#707070;font-size:14px;text-align:center;">Loading...</div>
+
+  <!-- Error -->
+  <div id="wn-error" style="display:none;margin-top:40px;color:red;font-size:14px;font-weight:500;text-align:center;"></div>
+
+  <!-- Results -->
+  <div id="wn-results" style="display:none;max-width:1200px;margin:0 auto;width:100%;">
+    <!-- Progress -->
+    <div id="wn-progress" style="margin:40px 0;"></div>
+    <!-- Timeline + Sidebar -->
+    <div id="wn-content" style="min-height:100px;display:flex;flex-direction:column;">
+      <div class="wn-tracking-content" style="margin-bottom:20px;width:100%;overflow:hidden;">
+        <div id="wn-timeline" class="wn-tracking-timeline" style="float:left;width:68%;box-sizing:border-box;padding:0 16px 16px;"></div>
+        <div id="wn-sidebar" class="wn-tracking-sidebar" style="float:right;width:30%;"></div>
+        <div style="clear:both;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Widget -->
+  <div id="wn-float-btn" style="display:none;position:fixed;bottom:24px;right:24px;z-index:1000;width:48px;height:48px;border-radius:50%;background:#007a5c;color:#fff;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,0.15);align-items:center;justify-content:center;font-size:20px;" onclick="wnOpenWidget()">&#128722;</div>
+  <div id="wn-float-panel" style="display:none;position:fixed;bottom:24px;right:24px;z-index:1000;width:340px;max-height:70vh;background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.08);border:1px solid #e5e5e5;overflow:hidden;flex-direction:column;"></div>
+</div>
+
+<style>
+  #wn-tracking-root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #303030; }
+  #wn-tracking-root * { box-sizing: border-box; }
+  #wn-tracking-root a { color: inherit; text-decoration: none; }
+
+  /* Timeline scrollbar */
+  .wn-timeline-scroll::-webkit-scrollbar { width: 4px; }
+  .wn-timeline-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 2px; }
+  .wn-timeline-scroll:hover::-webkit-scrollbar-thumb { background: #ddd; }
+
+  /* Float widget content scrollbar hide */
+  .wn-float-content { scrollbar-width: none; -ms-overflow-style: none; }
+  .wn-float-content::-webkit-scrollbar { display: none; }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .wn-tracking-content { display: flex !important; flex-direction: column !important; overflow: visible !important; }
+    .wn-tracking-timeline { float: none !important; width: 100% !important; margin-bottom: 20px !important; }
+    .wn-tracking-sidebar { float: none !important; width: 100% !important; padding: 0 !important; }
+    .wn-timeline-scroll { max-height: none !important; }
+    #wn-float-panel, #wn-float-btn { display: none !important; }
+    #wn-track-btn { width: 100% !important; }
+    /* Mobile progress: hide desktop, show mobile */
+    .wn-progress-desktop { display: none !important; }
+    .wn-progress-mobile { display: block !important; }
+  }
+  @media (min-width: 769px) {
+    .wn-progress-desktop { display: flex !important; }
+    .wn-progress-mobile { display: none !important; }
+  }
+</style>
+
+<script>
+(function() {
+  // ============================================================
+  // CONFIGURATION — CHANGE THIS TO YOUR VERCEL DEPLOYMENT URL
+  // ============================================================
+  var API_BASE = 'https://your-app.vercel.app';
+  // ============================================================
+
+  var SHOPIFY_DOMAIN = '';
+  var _trackingData = null;
+  var _products = [];
+  var _widgetOpen = true;
+  var _widgetMinimized = false;
+
+  var STATUS_MAP = {
+    NotFound:'Not Found', InfoReceived:'Info Received', InTransit:'In Transit',
+    Expired:'Expired', AvailableForPickup:'Pick Up', OutForDelivery:'Out for Delivery',
+    Delivered:'Delivered', Undelivered:'Undelivered', Exception:'Exception', Alert:'Alert'
+  };
+  var STAGE_ORDER = ['InfoReceived','PickedUp','InTransit','OutForDelivery','Delivered'];
+  var STAGE_LABELS = {
+    InfoReceived:'Info Received', PickedUp:'Picked Up', InTransit:'In Transit',
+    OutForDelivery:'Out for Delivery', Delivered:'Delivered', Exception:'Exception'
+  };
+  var STATUS_TO_STAGE = {
+    InfoReceived:0, PickedUp:1, InTransit:2, OutForDelivery:3, Delivered:4,
+    AvailableForPickup:3, Expired:2, Undelivered:3, Alert:2
+  };
+
+  // SVG Icons
+  var PROGRESS_ICONS = {
+    InfoReceived: function(c) { return '<svg width="28" height="28" viewBox="0 0 24 24" fill="'+c+'"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>'; },
+    PickedUp: function(c) { return '<svg width="28" height="28" viewBox="0 0 1024 1024" fill="'+c+'"><path d="M922.9 335.2H304.5l-27.6-138H128v69h86.4l110.5 552.3h493.3v-69H387.4l-13.8-69h480.4l68.9-345.3zM806.7 611.5H359.8l-41.4-207.3h535.2l-46.9 207.3z"/><path d="M359.8 818.5m-55.2 0a55.2 55.2 0 1 0 110.4 0 55.2 55.2 0 1 0-110.4 0Z"/><path d="M731.8 818.5m-55.2 0a55.2 55.2 0 1 0 110.4 0 55.2 55.2 0 1 0-110.4 0Z"/></svg>'; },
+    InTransit: function(c) { return '<svg width="28" height="28" viewBox="0 0 24 24" fill="'+c+'"><path d="M20 8h-3V4H1v13h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>'; },
+    OutForDelivery: function(c) { return '<svg width="28" height="28" viewBox="0 0 24 24" fill="'+c+'"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/><path d="M12 17l-5-5 1.41-1.41L12 14.17l3.59-3.58L17 12z"/></svg>'; },
+    Delivered: function(c) { return '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="12" fill="'+c+'"/><path fill-rule="evenodd" clip-rule="evenodd" d="M19.69 6.62a1.07 1.07 0 010 1.51l-9.24 9.24a1.07 1.07 0 01-1.51 0l-4.62-4.62a1.07 1.07 0 011.51-1.51l3.87 3.87 8.49-8.49a1.07 1.07 0 011.5 0z" fill="white"/></svg>'; },
+    Exception: function(c) { return '<svg width="28" height="28" viewBox="0 0 24 24" fill="'+c+'"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>'; },
+    default: function(c) { return '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" fill="white" stroke="'+c+'" stroke-width="2"/></svg>'; }
+  };
+
+  function getProgressIcon(stage, color) {
+    return (PROGRESS_ICONS[stage] || PROGRESS_ICONS.default)(color);
+  }
+
+  function getEventBadge(stage, subStatus, isFirst) {
+    var desc = (subStatus || '').toLowerCase();
+    if (stage === 'Delivered' || desc.includes('delivered'))
+      return '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#22c55e"/><path d="M8 14.5l3.5 3.5L20 10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    if (stage === 'OutForDelivery' || desc.includes('out_for_delivery') || desc.includes('outfordelivery'))
+      return '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#f59e0b"/><path d="M8 10h6v6H8z M14 12h3l2 2v2h-5z M10.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M17.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" stroke="#fff" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    if (stage === 'Exception' || desc.includes('exception') || desc.includes('undelivered') || desc.includes('alert'))
+      return '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="14" fill="#ef4444"/><rect x="13" y="8" width="2" height="8" rx="1" fill="#fff"/><circle cx="14" cy="19.5" r="1.2" fill="#fff"/></svg>';
+    if (stage === 'PickedUp' || desc.includes('pickup') || desc.includes('picked_up') || desc.includes('collected'))
+      return '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#22c55e" stroke-width="2" fill="#fff"/><path d="M10 11l4-2 4 2v6l-4 2-4-2z M14 9v8 M10 11l4 2 4-2" stroke="#22c55e" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    if (isFirst)
+      return '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="8" fill="#3b82f6"/><circle cx="14" cy="14" r="13" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.3"/></svg>';
+    return '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="10" stroke="#d1d5db" stroke-width="2" fill="#fff"/></svg>';
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+
+  function fmtPrice(price) {
+    var n = parseFloat(price);
+    if (isNaN(n)) return price;
+    if (n > 1000 && price.indexOf('.') === -1) return (n/100).toFixed(2);
+    return n.toFixed(2);
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function shouldHideLocation(loc) {
+    if (!loc) return true;
+    if (/[\u4e00-\u9fff]/.test(loc)) return true;
+    if (/\b(Guangzhou|Shenzhen|Shanghai|Beijing|Hangzhou|Dongguan|Foshan|Zhongshan|Xiamen|Chengdu|Wuhan|Nanjing|Tianjin|Chongqing|Suzhou|Qingdao|Dalian|Ningbo|Hefei|Changsha|Kunming|Fuzhou|Zhengzhou|Jinan|Sorting Centre|CN|China)\b/i.test(loc)) return true;
+    return false;
+  }
+
+  function isChinaCarrier(carrier) {
+    return carrier && carrier.country === 'CN';
+  }
+
+  // ── Main track function ──
+  window.wnTrack = function() {
+    var input = document.getElementById('wn-input');
+    var val = (input.value || '').trim();
+    if (!val) return;
+
+    // Update URL
+    var url = new URL(window.location.href);
+    url.searchParams.set('tracking_number', val);
+    window.history.replaceState({}, '', url.toString());
+
+    document.getElementById('wn-loading').style.display = 'block';
+    document.getElementById('wn-error').style.display = 'none';
+    document.getElementById('wn-results').style.display = 'none';
+    document.getElementById('wn-float-btn').style.display = 'none';
+    document.getElementById('wn-float-panel').style.display = 'none';
+
+    fetch(API_BASE + '/api/track', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({tracking_number: val})
+    })
+    .then(function(res) { return res.json().then(function(j) { return {ok:res.ok, json:j}; }); })
+    .then(function(r) {
+      document.getElementById('wn-loading').style.display = 'none';
+      if (!r.ok) {
+        document.getElementById('wn-error').textContent = r.json.error || 'Could not find tracking info.';
+        document.getElementById('wn-error').style.display = 'block';
+        return;
+      }
+      _trackingData = r.json.data;
+      _products = r.json.products || [];
+      SHOPIFY_DOMAIN = r.json.shopifyDomain || '';
+      renderResults();
+    })
+    .catch(function() {
+      document.getElementById('wn-loading').style.display = 'none';
+      document.getElementById('wn-error').textContent = 'An error occurred. Please try again later.';
+      document.getElementById('wn-error').style.display = 'block';
+    });
+  };
+
+  // ── Render all results ──
+  function renderResults() {
+    if (!_trackingData) return;
+    var info = _trackingData.track_info;
+    var status = info.latest_status.status;
+
+    renderProgress(info.milestone, status);
+    renderTimeline(info.tracking.providers && info.tracking.providers[0] ? info.tracking.providers[0].events : [], status);
+    renderSidebar(_trackingData.number, info.tracking.providers && info.tracking.providers[0] ? info.tracking.providers[0].provider : null, _products);
+    renderFloatingWidget(_products, SHOPIFY_DOMAIN);
+
+    document.getElementById('wn-results').style.display = 'block';
+  }
+
+  // ── Progress bar ──
+  function renderProgress(milestones, currentStatus) {
+    var isException = currentStatus === 'Exception' || currentStatus === 'Undelivered' || currentStatus === 'Alert';
+    var milestoneMap = {};
+    (milestones || []).forEach(function(m) {
+      milestoneMap[m.key_stage] = m;
+      if ((m.key_stage === 'Departure' || m.key_stage === 'Arrival') && m.time_iso) {
+        if (!milestoneMap['InTransit'] || !milestoneMap['InTransit'].time_iso) milestoneMap['InTransit'] = m;
+      }
+    });
+
+    var stages = STAGE_ORDER.slice();
+    if (isException) stages.push('Exception');
+
+    var highestIdx = -1;
+    for (var i = stages.length - 1; i >= 0; i--) {
+      var m = milestoneMap[stages[i]];
+      if ((m && m.time_iso) || (stages[i] === 'Exception' && isException)) { highestIdx = i; break; }
+    }
+    var statusIdx = STATUS_TO_STAGE[currentStatus] !== undefined ? STATUS_TO_STAGE[currentStatus] : -1;
+    if (statusIdx > highestIdx) highestIdx = statusIdx;
+
+    var stageData = stages.map(function(stage, idx) {
+      var isLast = idx === stages.length - 1;
+      var ms = milestoneMap[stage];
+      var reached = idx <= highestIdx;
+      var nextReached = !isLast && (idx + 1) <= highestIdx;
+      var color = reached ? (stage === 'Exception' ? '#e53935' : '#008000') : '#CDCDCD';
+      return {stage:stage, isLast:isLast, m:ms, reached:reached, nextReached:nextReached, color:color, idx:idx};
+    });
+
+    // Find latest reached
+    var latest = highestIdx >= 0 ? stageData[highestIdx] : stageData[0];
+    var latestLabel = STAGE_LABELS[latest.stage] || STATUS_MAP[latest.stage] || latest.stage;
+    var latestDate = latest.m && latest.m.time_iso ? fmtDate(latest.m.time_iso) : '';
+
+    // Desktop progress
+    var desktopHtml = '<div class="wn-progress-desktop" style="display:flex;flex-direction:row;align-items:flex-start;justify-content:space-between;margin:20px auto;width:100%;">';
+    stageData.forEach(function(s) {
+      desktopHtml += '<div style="display:flex;align-items:flex-start;flex:'+(s.isLast?'0 0 auto':'1')+'">';
+      desktopHtml += '<div style="display:flex;flex-direction:column;align-items:center;min-width:100px;max-width:160px;">';
+      desktopHtml += getProgressIcon(s.stage, s.color);
+      desktopHtml += '<span style="font-size:14px;font-weight:550;line-height:1.25;color:'+s.color+';margin-top:4px;text-align:center;white-space:nowrap;">'+(STAGE_LABELS[s.stage]||s.stage)+'</span>';
+      if (s.m && s.m.time_iso) desktopHtml += '<span style="font-size:13px;margin-top:4px;color:#707070;text-align:center;max-width:130px;display:block;line-height:1.4;">'+fmtDate(s.m.time_iso)+'</span>';
+      desktopHtml += '</div>';
+      if (!s.isLast) {
+        var bg = s.reached && s.nextReached ? '#008000' : s.reached ? 'linear-gradient(to right, #008000, #efefef)' : '#efefef';
+        desktopHtml += '<div style="flex:1;margin:12px 4px 0;height:5px;border-radius:8px;background:'+bg+';"></div>';
+      }
+      desktopHtml += '</div>';
+    });
+    desktopHtml += '</div>';
+
+    // Mobile progress (collapsible card)
+    var mobileHtml = '<div class="wn-progress-mobile" style="display:none;width:100%;margin-bottom:20px;">';
+    mobileHtml += '<div id="wn-progress-card" onclick="wnToggleProgress()" style="border:1px solid #e5e5e5;border-radius:12px;padding:16px 20px;cursor:pointer;background:#fff;">';
+    mobileHtml += '<div style="display:flex;align-items:center;justify-content:space-between;">';
+    mobileHtml += '<div style="display:flex;align-items:center;gap:12px;">';
+    mobileHtml += getProgressIcon(latest.stage, latest.color);
+    mobileHtml += '<div><div style="font-size:16px;font-weight:600;color:'+latest.color+';">'+esc(latestLabel)+'</div>';
+    if (latestDate) mobileHtml += '<div style="font-size:12px;color:#999;margin-top:2px;">'+esc(latestDate)+'</div>';
+    mobileHtml += '</div></div>';
+    mobileHtml += '<svg id="wn-progress-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;transition:transform 0.2s;"><path d="M4 6l4 4 4-4" stroke="#999" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    mobileHtml += '</div>';
+    // Expanded content
+    mobileHtml += '<div id="wn-progress-expanded" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f0;">';
+    var reversed = stageData.slice().reverse();
+    reversed.forEach(function(s, idx) {
+      var isLastItem = idx === reversed.length - 1;
+      mobileHtml += '<div style="display:flex;align-items:stretch;">';
+      mobileHtml += '<div style="display:flex;flex-direction:column;align-items:center;width:28px;flex-shrink:0;">';
+      mobileHtml += getProgressIcon(s.stage, s.color);
+      if (!isLastItem) mobileHtml += '<div style="width:3px;flex:1;min-height:20px;background:'+(s.reached?'#008000':'#efefef')+';border-radius:2px;"></div>';
+      mobileHtml += '</div>';
+      mobileHtml += '<div style="margin-left:12px;padding-bottom:'+(isLastItem?'0':'14px')+'">';
+      mobileHtml += '<span style="font-size:14px;font-weight:600;color:'+s.color+';line-height:1.3;">'+(STAGE_LABELS[s.stage]||s.stage)+'</span>';
+      if (s.m && s.m.time_iso) mobileHtml += '<div style="font-size:12px;color:#999;margin-top:2px;">'+fmtDate(s.m.time_iso)+'</div>';
+      mobileHtml += '</div></div>';
+    });
+    mobileHtml += '</div></div></div>';
+
+    document.getElementById('wn-progress').innerHTML = desktopHtml + mobileHtml;
+  }
+
+  var _progressExpanded = false;
+  window.wnToggleProgress = function() {
+    _progressExpanded = !_progressExpanded;
+    var el = document.getElementById('wn-progress-expanded');
+    var chev = document.getElementById('wn-progress-chevron');
+    if (el) el.style.display = _progressExpanded ? 'block' : 'none';
+    if (chev) chev.style.transform = _progressExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
+  };
+
+  // ── Timeline ──
+  function renderTimeline(events, statusLabel) {
+    var html = '<h2 style="font-size:25px;margin:16px 0 0;font-weight:550;margin-bottom:30px;position:sticky;top:0;background:#fff;z-index:2;padding-bottom:8px;">'+(STATUS_MAP[statusLabel]||esc(statusLabel))+'</h2>';
+    html += '<div class="wn-timeline-scroll" style="max-height:500px;overflow-y:auto;position:relative;"><div style="display:flex;flex-direction:column;">';
+
+    (events || []).forEach(function(ev, idx) {
+      html += '<div style="display:flex;gap:8px;position:relative;">';
+      // Vertical line
+      if (idx < events.length - 1)
+        html += '<div style="position:absolute;left:11px;top:24px;bottom:0;width:2px;background:#efefef;z-index:0;"></div>';
+      // Badge
+      html += '<div style="position:sticky;top:0;z-index:1;width:24px;min-width:24px;height:24px;background:#fff;border-radius:50%;align-self:flex-start;">'+getEventBadge(ev.stage, ev.sub_status, idx===0)+'</div>';
+      // Content
+      html += '<div style="flex:1;padding-bottom:16px;padding-left:12px;"><div style="box-shadow:0px 4px 6px -2px rgba(26,26,26,0.2);border-radius:8px;position:relative;">';
+      html += '<div style="padding:10px 14px;background:#f5f6fa;border-radius:8px;display:flex;flex-direction:column;gap:2px;">';
+      html += '<div style="position:absolute;top:2px;left:-5px;width:0;height:0;border-style:solid;border-width:8px 8px 8px 0;border-color:transparent #f5f6fa transparent transparent;"></div>';
+      var desc = esc(ev.description || '');
+      if (ev.location && !shouldHideLocation(ev.location)) desc += '<span style="color:#999;">, '+esc(ev.location)+'</span>';
+      html += '<div style="color:#303030;font-size:14px;font-weight:400;line-height:22px;word-wrap:break-word;">'+desc+'</div>';
+      html += '<div style="color:#616161;font-size:13px;font-weight:400;line-height:20px;">'+fmtDate(ev.time_iso)+'</div>';
+      html += '</div></div></div></div>';
+    });
+
+    html += '</div></div>';
+    document.getElementById('wn-timeline').innerHTML = html;
+  }
+
+  // ── Sidebar ──
+  function renderSidebar(trackingNumber, carrier, products) {
+    var showCarrier = carrier && !isChinaCarrier(carrier);
+    var html = '<ul style="margin:0;display:flex;flex-direction:column;padding:0 20px;list-style:none;">';
+
+    // Tracking number
+    html += '<li style="margin-bottom:20px;width:100%;margin-top:20px;">';
+    html += '<div style="font-size:14px;color:#303030;margin-bottom:10px;font-weight:bold;">Tracking Number</div>';
+    html += '<div style="font-size:14px;font-weight:400;color:#303030;word-break:break-word;display:flex;align-items:center;gap:8px;">';
+    html += '<span>'+esc(trackingNumber)+'</span>';
+    html += '<button onclick="wnCopy(\''+esc(trackingNumber)+'\')" style="background:none;border:none;cursor:pointer;padding:0;display:flex;" aria-label="Copy">';
+    html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+    html += '</button></div></li>';
+
+    // Carrier
+    if (showCarrier && carrier.name) {
+      html += '<li style="margin-bottom:20px;width:100%;">';
+      html += '<div style="font-size:14px;color:#303030;margin-bottom:10px;font-weight:bold;">Carrier</div>';
+      html += '<div style="font-size:14px;font-weight:400;color:#303030;">';
+      if (carrier.homepage) html += '<a href="'+esc(carrier.homepage)+'" target="_blank" rel="noopener" style="color:#007a5c;">'+esc(carrier.name)+'</a>';
+      else html += esc(carrier.name);
+      html += '</div></li>';
+    }
+
+    // Products
+    if (products && products.length) {
+      html += '<li style="margin-bottom:20px;width:100%;">';
+      html += '<div style="font-size:14px;color:#303030;margin-bottom:10px;font-weight:bold;">Product</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:12px;">';
+      products.forEach(function(p) {
+        html += '<div style="position:relative;overflow:visible;display:flex;gap:10px;">';
+        if (p.image) {
+          html += '<div style="position:relative;width:60px;min-width:60px;max-height:75px;">';
+          html += '<img src="'+esc(p.image)+'" alt="'+esc(p.title)+'" style="max-height:75px;width:100%;object-fit:cover;border-radius:4px;">';
+          if (p.quantity > 0) html += '<span style="display:inline-block;position:absolute;top:-6px;right:-6px;padding:2px 5px;background:#808080;color:#fff;border-radius:50%;font-size:11px;line-height:14px;z-index:10;min-width:14px;text-align:center;">'+p.quantity+'</span>';
+          html += '</div>';
+        } else if (p.quantity > 0) {
+          html += '<div style="width:60px;min-width:60px;height:60px;background:#f0f0f0;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px;">x'+p.quantity+'</div>';
+        }
+        html += '<div style="flex:1;min-width:0;"><span style="overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-height:24px;color:#303030;">'+esc(p.title)+'</span></div>';
+        html += '</div>';
+      });
+      html += '</div></li>';
+    }
+
+    html += '</ul>';
+    document.getElementById('wn-sidebar').innerHTML = html;
+  }
+
+  window.wnCopy = function(text) {
+    navigator.clipboard.writeText(text);
+  };
+
+  // ── Floating Widget ──
+  function renderFloatingWidget(products, domain) {
+    var buyable = (products || []).filter(function(p) { return p.variant_id && p.variant_id !== 0; });
+    if (!buyable.length && !domain) return;
+
+    _widgetOpen = true;
+    _widgetMinimized = false;
+
+    var panel = document.getElementById('wn-float-panel');
+    var html = '';
+
+    // Header
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#007a5c;color:#fff;border-radius:14px 14px 0 0;cursor:pointer;flex-shrink:0;" onclick="wnToggleWidgetMinimize()">';
+    html += '<span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;">&#128722; Reorder & Discover</span>';
+    html += '<div style="display:flex;gap:4px;">';
+    html += '<button onclick="event.stopPropagation();wnToggleWidgetMinimize();" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 4px;opacity:0.8;" id="wn-float-minbtn">&#9660;</button>';
+    html += '<button onclick="event.stopPropagation();wnCloseWidget();" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 4px;opacity:0.8;">&#10005;</button>';
+    html += '</div></div>';
+
+    // Content
+    html += '<div id="wn-float-body" class="wn-float-content" style="flex:1;overflow-y:auto;padding:0 16px 16px;">';
+
+    // Reorder section
+    if (buyable.length) {
+      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e5e5;">';
+      html += '<div style="font-size:13px;font-weight:700;color:#303030;margin-bottom:10px;">Reorder</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      buyable.forEach(function(p, idx) {
+        var price = fmtPrice(p.unit_price);
+        var compareAt = p.compare_at_price ? fmtPrice(p.compare_at_price) : '';
+        var hasDiscount = compareAt && parseFloat(compareAt) > parseFloat(price);
+        var savePercent = hasDiscount ? Math.round((1 - parseFloat(price)/parseFloat(compareAt))*100) : 0;
+        var qtyId = 'wn-qty-'+idx;
+
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fafafa;border-radius:8px;border:1px solid #eee;">';
+        // Image
+        html += '<div style="width:48px;height:48px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#f0f0f0;">';
+        if (p.image) html += '<img src="'+esc(p.image)+'" alt="" style="width:48px;height:48px;object-fit:cover;">';
+        html += '</div>';
+        // Info
+        html += '<div style="flex:1;min-width:0;">';
+        html += '<div style="font-size:12px;font-weight:600;color:#303030;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.title)+'</div>';
+        if (p.variant_title && p.variant_title !== 'Default Title')
+          html += '<div style="font-size:10px;color:#888;margin-top:1px;">'+esc(p.variant_title)+'</div>';
+        html += '<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">';
+        html += '<span style="font-size:12px;font-weight:700;color:#1a1a1a;">$'+price+'</span>';
+        if (hasDiscount) html += '<span style="font-size:10px;color:#999;text-decoration:line-through;">$'+compareAt+'</span>';
+        if (hasDiscount && savePercent > 0) html += '<span style="font-size:9px;font-weight:700;color:#e53935;background:#fde8e8;border-radius:3px;padding:0px 3px;">-'+savePercent+'%</span>';
+        html += '</div>';
+        // Qty + Buy
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-top:5px;">';
+        html += '<div style="display:flex;align-items:center;border:1px solid #ddd;border-radius:4px;overflow:hidden;">';
+        html += '<button onclick="wnQty(\''+qtyId+'\',-1)" style="width:22px;height:22px;border:none;background:#f5f5f5;cursor:pointer;font-size:13px;color:#555;display:flex;align-items:center;justify-content:center;">&minus;</button>';
+        html += '<span id="'+qtyId+'" style="width:22px;text-align:center;font-size:11px;font-weight:600;color:#303030;">1</span>';
+        html += '<button onclick="wnQty(\''+qtyId+'\',1)" style="width:22px;height:22px;border:none;background:#f5f5f5;cursor:pointer;font-size:13px;color:#555;display:flex;align-items:center;justify-content:center;">+</button>';
+        html += '</div>';
+        html += '<a id="wn-buy-'+idx+'" href="https://'+esc(domain)+'/cart/'+p.variant_id+':1" target="_blank" style="padding:4px 10px;background:#007a5c;color:#fff;border-radius:4px;font-size:10px;font-weight:700;text-decoration:none;white-space:nowrap;">Buy Again</a>';
+        html += '</div></div></div>';
+      });
+      html += '</div></div>';
+    }
+
+    // Related products placeholder (fetched async)
+    html += '<div id="wn-related"></div>';
+    html += '</div>';
+
+    panel.innerHTML = html;
+    panel.style.display = 'flex';
+
+    // Fetch related products
+    if (domain) {
+      fetch('https://'+domain+'/collections/all/products.json?limit=8')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var items = (data.products || []).filter(function(p) { return p.available !== false && p.variants && p.variants[0]; }).slice(0, 4);
+          if (!items.length) return;
+          var rhtml = '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e5e5;">';
+          rhtml += '<div style="font-size:13px;font-weight:700;color:#303030;margin-bottom:10px;">You may also like</div>';
+          rhtml += '<div style="display:flex;flex-direction:column;gap:8px;">';
+          items.forEach(function(p) {
+            var pr = fmtPrice(p.variants[0].price);
+            var ca = p.variants[0].compare_at_price ? fmtPrice(p.variants[0].compare_at_price) : '';
+            var hd = ca && parseFloat(ca) > parseFloat(pr);
+            rhtml += '<a href="https://'+esc(domain)+'/products/'+esc(p.handle)+'" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#fafafa;border-radius:8px;border:1px solid #eee;text-decoration:none;color:inherit;">';
+            rhtml += '<div style="width:40px;height:40px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#f0f0f0;">';
+            if (p.images && p.images[0]) rhtml += '<img src="'+esc(p.images[0].src)+'" alt="" style="width:40px;height:40px;object-fit:cover;">';
+            rhtml += '</div>';
+            rhtml += '<div style="flex:1;min-width:0;">';
+            rhtml += '<div style="font-size:11px;font-weight:600;color:#303030;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.title)+'</div>';
+            rhtml += '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;">';
+            rhtml += '<span style="font-size:12px;font-weight:700;color:#1a1a1a;">$'+pr+'</span>';
+            if (hd) rhtml += '<span style="font-size:10px;color:#999;text-decoration:line-through;">$'+ca+'</span>';
+            if (hd) rhtml += '<span style="font-size:9px;font-weight:700;color:#e53935;background:#fde8e8;border-radius:3px;padding:0px 3px;">-'+Math.round((1-parseFloat(pr)/parseFloat(ca))*100)+'%</span>';
+            rhtml += '</div></div>';
+            rhtml += '<div style="font-size:10px;color:#007a5c;font-weight:600;flex-shrink:0;">View &rarr;</div>';
+            rhtml += '</a>';
+          });
+          rhtml += '</div></div>';
+          var rel = document.getElementById('wn-related');
+          if (rel) rel.innerHTML = rhtml;
+        })
+        .catch(function(){});
+    }
+  }
+
+  // Store variant IDs for buy links
+  window.wnQty = function(id, delta) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var v = parseInt(el.textContent) + delta;
+    if (v < 1) v = 1;
+    el.textContent = v;
+    // Update buy link
+    var idx = parseInt(id.replace('wn-qty-',''));
+    var buyable = (_products || []).filter(function(p) { return p.variant_id && p.variant_id !== 0; });
+    var p = buyable[idx];
+    if (p) {
+      var link = document.getElementById('wn-buy-'+idx);
+      if (link) link.href = 'https://'+SHOPIFY_DOMAIN+'/cart/'+p.variant_id+':'+v;
+    }
+  };
+
+  window.wnCloseWidget = function() {
+    document.getElementById('wn-float-panel').style.display = 'none';
+    document.getElementById('wn-float-btn').style.display = 'flex';
+  };
+
+  window.wnOpenWidget = function() {
+    document.getElementById('wn-float-btn').style.display = 'none';
+    document.getElementById('wn-float-panel').style.display = 'flex';
+    _widgetMinimized = false;
+    var body = document.getElementById('wn-float-body');
+    if (body) body.style.display = 'block';
+    var panel = document.getElementById('wn-float-panel');
+    if (panel) { panel.style.width = '340px'; panel.style.maxHeight = '70vh'; }
+  };
+
+  window.wnToggleWidgetMinimize = function() {
+    _widgetMinimized = !_widgetMinimized;
+    var body = document.getElementById('wn-float-body');
+    var panel = document.getElementById('wn-float-panel');
+    var btn = document.getElementById('wn-float-minbtn');
+    if (body) body.style.display = _widgetMinimized ? 'none' : 'block';
+    if (panel) {
+      panel.style.width = _widgetMinimized ? '280px' : '340px';
+      panel.style.maxHeight = _widgetMinimized ? '48px' : '70vh';
+    }
+    if (btn) btn.innerHTML = _widgetMinimized ? '&#9650;' : '&#9660;';
+  };
+
+  // ── Auto-track from URL on page load ──
+  function init() {
+    var params = new URLSearchParams(window.location.search);
+    var tn = params.get('tracking_number') || params.get('nums') || '';
+    if (tn.trim()) {
+      document.getElementById('wn-input').value = tn.trim();
+      wnTrack();
+    }
+
+    // Handle back/forward button
+    window.addEventListener('popstate', function() {
+      var p = new URLSearchParams(window.location.search);
+      var t = p.get('tracking_number') || p.get('nums') || '';
+      if (t.trim()) {
+        document.getElementById('wn-input').value = t.trim();
+        wnTrack();
+      }
+    });
+
+    // Enter key
+    document.getElementById('wn-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') wnTrack();
+    });
+  }
+
+  // Run init when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

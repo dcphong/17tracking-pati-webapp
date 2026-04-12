@@ -9,15 +9,35 @@ const SHOPIFY_DOMAIN = process.env['SHOPIFY_DOMAIN'] || ''
 
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null
 
+const ALLOWED_ORIGINS = [
+  `https://${SHOPIFY_DOMAIN}`,
+  'http://localhost:3000',
+]
+
+function corsHeaders(req: NextRequest) {
+  const origin = req.headers.get('origin') || ''
+  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ''
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  }
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) })
+}
+
 export async function POST(req: NextRequest) {
+  const headers = corsHeaders(req)
   const { tracking_number } = await req.json()
 
   if (!tracking_number?.trim()) {
-    return NextResponse.json({ error: 'Tracking number is required' }, { status: 400 })
+    return NextResponse.json({ error: 'Tracking number is required' }, { status: 400, headers })
   }
 
   if (!API_KEY) {
-    return NextResponse.json({ error: '17TRACK API key not configured' }, { status: 500 })
+    return NextResponse.json({ error: '17TRACK API key not configured' }, { status: 500, headers })
   }
 
   const tn = tracking_number.trim()
@@ -36,19 +56,19 @@ export async function POST(req: NextRequest) {
     const json = await trackRes.json()
 
     if (json.code !== 0) {
-      return NextResponse.json({ error: json.message || 'API error' }, { status: 502 })
+      return NextResponse.json({ error: json.message || 'API error' }, { status: 502, headers })
     }
 
     const accepted = json.data?.accepted?.[0]
     if (!accepted) {
       const rejected = json.data?.rejected?.[0]
       const msg = rejected?.error?.message || 'Tracking number not found or not yet registered'
-      return NextResponse.json({ error: msg }, { status: 404 })
+      return NextResponse.json({ error: msg }, { status: 404, headers })
     }
 
-    return NextResponse.json({ data: accepted, products, shopifyDomain: SHOPIFY_DOMAIN })
+    return NextResponse.json({ data: accepted, products, shopifyDomain: SHOPIFY_DOMAIN }, { headers })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || 'Failed to fetch tracking info' }, { status: 500 })
+    return NextResponse.json({ error: e.message || 'Failed to fetch tracking info' }, { status: 500, headers })
   }
 }
 
